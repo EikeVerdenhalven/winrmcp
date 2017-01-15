@@ -59,6 +59,7 @@ func New(addr string, config *Config) (*Winrmcp, error) {
 	return &Winrmcp{client, config}, err
 }
 
+// Copy transfers file at fromPath to toPath
 func (fs *Winrmcp) Copy(fromPath, toPath string) error {
 	f, err := os.Open(fromPath)
 	if err != nil {
@@ -73,15 +74,14 @@ func (fs *Winrmcp) Copy(fromPath, toPath string) error {
 
 	if !fi.IsDir() {
 		return fs.Write(toPath, f)
-	} else {
-		fw := fileWalker{
-			client:  fs.client,
-			config:  fs.config,
-			toDir:   toPath,
-			fromDir: fromPath,
-		}
-		return filepath.Walk(fromPath, fw.copyFile)
 	}
+	fw := fileWalker{
+		client:  fs.client,
+		config:  fs.config,
+		toDir:   toPath,
+		fromDir: fromPath,
+	}
+	return filepath.Walk(fromPath, fw.copyFile)
 }
 
 func (fs *Winrmcp) Write(toPath string, src io.Reader) error {

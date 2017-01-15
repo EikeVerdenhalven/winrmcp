@@ -199,6 +199,5 @@ func tempFileName() (string, error) {
 	if err != nil {
 		return "", err
 	}
-
 	return fmt.Sprintf("winrmcp-%s.tmp", uniquePart), nil
 }
