@@ -4,8 +4,6 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
-	"os"
-	"sync"
 
 	"github.com/masterzen/winrm"
 	"github.com/nu7hatch/gouuid"
@@ -42,6 +40,20 @@ func doCopy(client *winrm.Client, config *Config, in io.Reader, toPath string) e
 	return nil
 }
 
+func chunkSize(filePathLength int) int {
+	// Upload the file in chunks to get around the Windows command line size limit.
+	// Base64 encodes each set of three bytes into four bytes. In addition the output
+	// is padded to always be a multiple of four.
+	//
+	//   ceil(n / 3) * 4 = m1 - m2
+	//
+	//   where:
+	//     n  = bytes
+	//     m1 = max (8192 character command limit.)
+	//     m2 = len(filePath)
+	return ((8000 - filePathLength) / 4) * 3
+}
+
 func uploadContent(client *winrm.Client, maxChunks int, filePath string, reader io.Reader) error {
 	var err error
 	done := false
@@ -62,19 +74,7 @@ func uploadChunks(client *winrm.Client, filePath string, maxChunks int, reader i
 	}
 	defer shell.Close()
 
-	// Upload the file in chunks to get around the Windows command line size limit.
-	// Base64 encodes each set of three bytes into four bytes. In addition the output
-	// is padded to always be a multiple of four.
-	//
-	//   ceil(n / 3) * 4 = m1 - m2
-	//
-	//   where:
-	//     n  = bytes
-	//     m1 = max (8192 character command limit.)
-	//     m2 = len(filePath)
-
-	chunkSize := ((8000 - len(filePath)) / 4) * 3
-	chunk := make([]byte, chunkSize)
+	chunk := make([]byte, chunkSize(len(filePath)))
 
 	if maxChunks == 0 {
 		maxChunks = 1
@@ -100,12 +100,6 @@ func uploadChunks(client *winrm.Client, filePath string, maxChunks int, reader i
 }
 
 func restoreContent(client *winrm.Client, fromPath, toPath string) error {
-	shell, err := client.CreateShell()
-	if err != nil {
-		return err
-	}
-
-	defer shell.Close()
 	script := fmt.Sprintf(`
 		$tmp_file_path = [System.IO.Path]::GetFullPath("%s")
 		$dest_file_path = [System.IO.Path]::GetFullPath("%s".Trim("'"))
@@ -127,71 +121,15 @@ func restoreContent(client *winrm.Client, fromPath, toPath string) error {
 		}
 	`, fromPath, toPath)
 
-	cmd, err := shell.Execute(winrm.Powershell(script))
-	if err != nil {
-		return err
-	}
-	defer cmd.Close()
-
-	var wg sync.WaitGroup
-	copyFunc := func(w io.Writer, r io.Reader) {
-		defer wg.Done()
-		io.Copy(w, r)
-	}
-
-	wg.Add(2)
-	go copyFunc(os.Stdout, cmd.Stdout)
-	go copyFunc(os.Stderr, cmd.Stderr)
-
-	cmd.Wait()
-	wg.Wait()
-
-	if cmd.ExitCode() != 0 {
-		return fmt.Errorf("restore operation returned code=%d", cmd.ExitCode())
-	}
-	return nil
+	return ExecuteRemoteCommand(client, winrm.Powershell(script))
 }
 
 func cleanupContent(client *winrm.Client, filePath string) error {
-	shell, err := client.CreateShell()
-	if err != nil {
-		return err
-	}
-
-	defer shell.Close()
-	cmd, _ := shell.Execute("powershell", "Remove-Item", filePath, "-ErrorAction SilentlyContinue")
-
-	cmd.Wait()
-	cmd.Close()
-	return nil
+	return ExecuteRemoteCommand(client, winrm.Powershell(fmt.Sprintf("Remove-Item %s -ErrorAction SilentlyContinue", filePath)))
 }
 
 func appendContent(shell *winrm.Shell, filePath, content string) error {
-	cmd, err := shell.Execute(fmt.Sprintf("echo %s >> \"%s\"", content, filePath))
-
-	if err != nil {
-		return err
-	}
-
-	defer cmd.Close()
-	var wg sync.WaitGroup
-	copyFunc := func(w io.Writer, r io.Reader) {
-		defer wg.Done()
-		io.Copy(w, r)
-	}
-
-	wg.Add(2)
-	go copyFunc(os.Stdout, cmd.Stdout)
-	go copyFunc(os.Stderr, cmd.Stderr)
-
-	cmd.Wait()
-	wg.Wait()
-
-	if cmd.ExitCode() != 0 {
-		return fmt.Errorf("upload operation returned code=%d", cmd.ExitCode())
-	}
-
-	return nil
+	return SendShellCommand(shell, fmt.Sprintf("echo %s >> \"%s\"", content, filePath))
 }
 
 func tempFileName() (string, error) {
@@ -199,5 +137,6 @@ func tempFileName() (string, error) {
 	if err != nil {
 		return "", err
 	}
+
 	return fmt.Sprintf("winrmcp-%s.tmp", uniquePart), nil
 }

@@ -16,3 +16,24 @@ func TestTempFilename(t *testing.T) {
 		t.Errorf("Invalid Temp Filename: \"%s\"", actual)
 	}
 }
+
+func TestChunkSizeCalculation(t *testing.T) {
+	testdata := []int{
+		1,
+		20,
+		21,
+		24,
+		23,
+		49,
+		13,
+	}
+	for _, testpoint := range testdata {
+		actualSize := chunkSize(testpoint)
+		if (actualSize % 3) != 0 {
+			t.Error("ChunkSize is not a multiple of 3")
+		}
+		if actualSize >= 8192 {
+			t.Errorf("ChunkSize of %d exceeds maximum console characters", actualSize)
+		}
+	}
+}
