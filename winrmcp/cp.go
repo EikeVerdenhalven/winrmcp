@@ -4,7 +4,6 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"sync"
 
@@ -19,27 +18,21 @@ func doCopy(client *winrm.Client, config *Config, in io.Reader, toPath string) e
 	}
 	tempPath := "$env:TEMP\\" + tempFile
 
-	if os.Getenv("WINRMCP_DEBUG") != "" {
-		log.Printf("Copying file to %s\n", tempPath)
-	}
+	debugLog(fmt.Sprintf("Copying file to %s\n", tempPath))
 
 	err = uploadContent(client, config.MaxOperationsPerShell, "%TEMP%\\"+tempFile, in)
 	if err != nil {
 		return fmt.Errorf("Error uploading file to %s: %v", tempPath, err)
 	}
 
-	if os.Getenv("WINRMCP_DEBUG") != "" {
-		log.Printf("Moving file from %s to %s", tempPath, toPath)
-	}
+	debugLog(fmt.Sprintf("Moving file from %s to %s", tempPath, toPath))
 
 	err = restoreContent(client, tempPath, toPath)
 	if err != nil {
 		return fmt.Errorf("Error restoring file from %s to %s: %v", tempPath, toPath, err)
 	}
 
-	if os.Getenv("WINRMCP_DEBUG") != "" {
-		log.Printf("Removing temporary file %s", tempPath)
-	}
+	debugLog(fmt.Sprintf("Removing temporary file %s", tempPath))
 
 	err = cleanupContent(client, tempPath)
 	if err != nil {

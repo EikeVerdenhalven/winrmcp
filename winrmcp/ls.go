@@ -3,8 +3,6 @@ package winrmcp
 import (
 	"encoding/xml"
 	"fmt"
-	"log"
-	"os"
 	"strconv"
 
 	"github.com/masterzen/winrm"
@@ -26,9 +24,7 @@ func fetchList(client *winrm.Client, remotePath string) ([]FileItem, error) {
 	}
 
 	if stderr != "" {
-		if os.Getenv("WINRMCP_DEBUG") != "" {
-			log.Printf("STDERR returned: %s\n", stderr)
-		}
+		debugLog(fmt.Sprintf("STDERR returned: %s\n", stderr))
 	}
 
 	if stdout != "" {
